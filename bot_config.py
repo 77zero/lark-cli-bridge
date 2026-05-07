@@ -30,6 +30,18 @@ def get_cli_command() -> list[str]:
         return [_CLAUDE]
     return [_OPENCODE]
 
+# ── opencode serve 模式配置 ─────────────────────────────────
+# 使用 opencode serve 长连接模式，支持 --attach --continue 会话持久化
+# 留空则使用传统 opencode run（每次新建会话）
+OPENCODE_SERVE_URL = os.getenv("OPENCODE_SERVE_URL", "")
+
+# serve 认证密码（对应 OPENCODE_SERVER_PASSWORD 环境变量）
+OPENCODE_SERVE_PASSWORD = os.getenv("OPENCODE_SERVE_PASSWORD", "")
+
+# 是否在启动时自动拉起 opencode serve（仅 CLI_TYPE=opencode 且配置了端口时生效）
+OPENCODE_SERVE_AUTO_START = os.getenv("OPENCODE_SERVE_AUTO_START", "true").lower() == "true"
+OPENCODE_SERVE_PORT = int(os.getenv("OPENCODE_SERVE_PORT", "4096"))
+
 # 飞书 SDK 日志级别
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 

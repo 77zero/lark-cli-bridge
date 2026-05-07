@@ -348,12 +348,61 @@ async def _run_and_display(
 
 # ── 启动 ──────────────────────────────────────────────────────
 
+def _start_opencode_serve():
+    """后台启动 opencode serve 进程（如果配置了）"""
+    if config.CLI_TYPE != "opencode":
+        return None
+    if not config.OPENCODE_SERVE_AUTO_START:
+        return None
+
+    import subprocess as sp
+    port = config.OPENCODE_SERVE_PORT
+    serve_url = f"http://localhost:{port}"
+
+    # 检查 serve 是否已在运行
+    import socket
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.connect(("localhost", port))
+        sock.close()
+        print(f"   opencode serve 已在运行: {serve_url}")
+        return serve_url
+    except Exception:
+        sock.close()
+
+    # 启动 serve
+    print(f"   启动 opencode serve: {serve_url} ...")
+    env = os.environ.copy()
+    if config.OPENCODE_SERVE_PASSWORD:
+        env["OPENCODE_SERVER_PASSWORD"] = config.OPENCODE_SERVE_PASSWORD
+
+    cmd = config.get_cli_command() + ["serve", "--port", str(port)]
+    try:
+        sp.Popen(
+            cmd,
+            stdout=sp.DEVNULL,
+            stderr=sp.DEVNULL,
+            cwd=config.CLI_WORK_DIR,
+            env=env,
+        )
+        # 等 3 秒让 serve 启动
+        time.sleep(3)
+        print(f"   opencode serve 已启动: {serve_url}")
+        return serve_url
+    except Exception as e:
+        print(f"   [warn] opencode serve 启动失败: {e}")
+        return None
+
+
 def main():
     print(f"🚀 cli_lark_bridge 启动中...")
     print(f"   CLI 类型    : {config.CLI_TYPE}")
     print(f"   CLI 命令    : {' '.join(config.get_cli_command())}")
     print(f"   工作目录    : {config.CLI_WORK_DIR}")
     print(f"   App ID      : {config.FEISHU_APP_ID}")
+
+    # 启动 opencode serve（如果配置了）
+    _start_opencode_serve()
 
     # 事件处理器
     handler = lark.EventDispatcherHandler.builder("", "") \
