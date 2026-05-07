@@ -256,11 +256,8 @@ async def handle_message_async(event: P2ImMessageReceiveV1):
     if not text:
         return
 
-    # ── 回复已读 ──────────────────────────────────────────────
-    try:
-        await feishu.reply_text(msg.message_id, "[OK] 已读，正在处理...")
-    except Exception as e:
-        print(f"[warn] 已读回执发送失败: {e}", flush=True)
+    # ── 已读回执：表情回复 ──────────────────────────────────
+    await feishu.add_reaction(msg.message_id, "OK")
 
     # ── 自动打断 ──────────────────────────────────────────────
     active = _active_runs.get_run(user_id)

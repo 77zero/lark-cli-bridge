@@ -30,6 +30,23 @@ class FeishuClient:
         content = json.dumps({"text": text}, ensure_ascii=False)
         return await self._reply(message_id, "text", content)
 
+    async def add_reaction(self, message_id: str, emoji: str = "OK") -> bool:
+        """给消息添加表情回复（已读回执），返回是否成功"""
+        try:
+            req = CreateMessageReactionRequest.builder() \
+                .message_id(message_id) \
+                .request_body(
+                    CreateMessageReactionRequestBody.builder()
+                        .reaction_type({"emoji_type": emoji})
+                        .build()
+                ) \
+                .build()
+            resp = self.client.im.v1.message_reaction.create(req)
+            return resp.success()
+        except Exception as e:
+            print(f"[reaction] 表情添加失败: {e}", flush=True)
+            return False
+
     # ── 卡片消息 ──────────────────────────────────────────────
 
     async def send_card_to_user(
