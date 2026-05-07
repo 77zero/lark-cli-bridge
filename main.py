@@ -83,7 +83,7 @@ async def _send_boot_notification():
         return
     try:
         msg = (
-            f"✅ **{config.CLI_TYPE} Bridge 已上线**\n"
+            f"[OK] **{config.CLI_TYPE} Bridge 已上线**\n"
             f"工作目录: `{config.CLI_WORK_DIR}`\n"
             f"启动时间: {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
             f"发送消息即可开始对话。\n"
@@ -105,7 +105,7 @@ async def _handle_new_command(user_id: str) -> str:
     active = _active_runs.get_run(user_id)
     if active:
         await stop_active_run(_active_runs, user_id)
-    return "✅ 已开启新会话，发送消息开始对话。"
+    return "[OK] 已开启新会话，发送消息开始对话。"
 
 
 async def _handle_stop_command(user_id: str) -> str:
@@ -129,7 +129,7 @@ async def _handle_stop_command(user_id: str) -> str:
 async def _announce_stopped(active_run: ActiveRun):
     """任务停止后更新卡片"""
     try:
-        await feishu.update_card(active_run.card_msg_id, "⏹ 已停止当前任务")
+        await feishu.update_card(active_run.card_msg_id, "[STOP] 已停止当前任务")
     except Exception:
         pass
 
@@ -150,6 +150,35 @@ def _extract_text(event: P2ImMessageReceiveV1) -> str:
 def _extract_sender_id(event: P2ImMessageReceiveV1) -> str:
     """提取发送者的 open_id"""
     return event.event.sender.sender_id.open_id
+
+
+def _clean_opencode_output(text: str) -> str:
+    """清洗 opencode 响应，去除 agent 自我介绍等系统前缀"""
+    lines = text.strip().split("\n")
+    # 跳过开头的系统/环境提示行
+    clean_start = 0
+    skip_patterns = [
+        "> Sisyphus",           # agent 身份行
+        "我先看看",              # opencode agent 常见开头
+        "让我看看",              # agent 观察
+        "我来看看",              # agent 观察
+        "好的，",               # agent 应答
+        "<system-reminder>",    # 系统提示
+        "<local-command",       # 本地命令提示
+        "Tool:",               # 工具调用残留
+        "[环境：",              # 环境信息
+    ]
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped:
+            clean_start = i + 1
+            continue
+        if any(stripped.startswith(p) for p in skip_patterns):
+            clean_start = i + 1
+            continue
+        break
+
+    return "\n".join(lines[clean_start:]).strip()
 
 
 def on_message_receive(data: P2ImMessageReceiveV1) -> None:
@@ -214,11 +243,11 @@ async def handle_message_async(event: P2ImMessageReceiveV1):
                 if img_path:
                     text = f"[用户发送了一张图片，路径：{img_path}，请读取并分析这张图片]"
                 else:
-                    await feishu.reply_card(msg.message_id, content="❌ 下载图片失败", loading=False)
+                    await feishu.reply_card(msg.message_id, content="[ERR] 下载图片失败", loading=False)
                     return
         except Exception as e:
             print(f"[image] 下载失败: {e}", flush=True)
-            await feishu.reply_card(msg.message_id, content=f"❌ 下载图片失败：{e}", loading=False)
+            await feishu.reply_card(msg.message_id, content=f"[ERR] 下载图片失败：{e}", loading=False)
             return
 
     if msg.message_type not in ("text", "image"):
@@ -229,7 +258,7 @@ async def handle_message_async(event: P2ImMessageReceiveV1):
 
     # ── 回复已读 ──────────────────────────────────────────────
     try:
-        await feishu.reply_card(msg.message_id, content="✅ 已读，正在处理...", loading=False)
+        await feishu.reply_text(msg.message_id, "[OK] 已读，正在处理...")
     except Exception as e:
         print(f"[warn] 已读回执发送失败: {e}", flush=True)
 
@@ -242,19 +271,20 @@ async def handle_message_async(event: P2ImMessageReceiveV1):
     # ── 调用 CLI ──────────────────────────────────────────────
     session = await store.get_current(user_id)
 
-    # 发送"思考中"占位卡片
+    # 发送"思考中"占位卡片，标题用消息摘要
     try:
-        card_msg_id = await feishu.reply_card(msg.message_id, loading=True)
+        card_title = text[:40] + ("..." if len(text) > 40 else "")
+        card_msg_id = await feishu.reply_card(msg.message_id, loading=True, title=card_title)
     except Exception as e:
         print(f"[error] 发送思考中卡片失败: {e}", flush=True)
-        await feishu.reply_card(msg.message_id, content=f"❌ 发送失败：{e}", loading=False)
+        await feishu.reply_card(msg.message_id, content=f"[ERR] 发送失败：{e}", loading=False)
         return
 
-    await _run_and_display(user_id, text, card_msg_id, session)
+    await _run_and_display(user_id, text, card_msg_id, session, card_title)
 
 
 async def _run_and_display(
-    user_id: str, text: str, card_msg_id: str, session,
+    user_id: str, text: str, card_msg_id: str, session, card_title: str = "",
 ):
     """调用 CLI 并流式展示结果"""
     active_run = _active_runs.start_run(user_id, card_msg_id)
@@ -288,7 +318,7 @@ async def _run_and_display(
             if len(d) > _MAX_DISPLAY:
                 d = "...\n\n" + d[-_MAX_DISPLAY:]
             parts.append(d)
-        return "\n".join(parts) if parts else "⏳ 思考中..."
+        return "\n".join(parts) if parts else "[...] 思考中..."
 
     async def on_tool_use(name: str, inp: dict):
         nonlocal accumulated, last_push_time
@@ -324,7 +354,7 @@ async def _run_and_display(
         print(f"[error] CLI 运行失败: {type(e).__name__}: {e}", flush=True)
         traceback.print_exc()
         try:
-            await feishu.update_card(card_msg_id, f"❌ CLI 执行出错：{type(e).__name__}: {e}")
+            await feishu.update_card(card_msg_id, f"[ERROR] CLI 执行出错：{type(e).__name__}: {e}")
         except Exception:
             pass
         return
@@ -333,8 +363,9 @@ async def _run_and_display(
 
     # 最终更新卡片
     final = full_text or accumulated or "（无输出）"
+    final = _clean_opencode_output(final)
     try:
-        await feishu.update_card(card_msg_id, final)
+        await feishu.update_card(card_msg_id, final, title=card_title)
     except Exception as e:
         print(f"[error] 卡片更新失败: {e}", flush=True)
         try:
@@ -395,7 +426,7 @@ def _start_opencode_serve():
 
 
 def main():
-    print(f"🚀 cli_lark_bridge 启动中...")
+    print(f"[启动] cli_lark_bridge 启动中...")
     print(f"   CLI 类型    : {config.CLI_TYPE}")
     print(f"   CLI 命令    : {' '.join(config.get_cli_command())}")
     print(f"   工作目录    : {config.CLI_WORK_DIR}")
@@ -429,7 +460,7 @@ def main():
             pass
     threading.Thread(target=_delayed_notify, daemon=True).start()
 
-    print("✅ 连接飞书 WebSocket 长连接（自动重连）...")
+    print("[连接] 飞书 WebSocket 长连接（自动重连）...")
     ws_client.start()  # 阻塞，内部运行事件循环
 
 

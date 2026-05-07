@@ -33,27 +33,29 @@ class FeishuClient:
     # ── 卡片消息 ──────────────────────────────────────────────
 
     async def send_card_to_user(
-        self, open_id: str, content: str = "", loading: bool = False
+        self, open_id: str, content: str = "", loading: bool = False,
+        title: str = "",
     ) -> str:
         """发送卡片消息给用户，返回 card_message_id"""
         elements = self._build_card_elements(content, loading)
-        card_content = self._build_card_json(elements)
+        card_content = self._build_card_json(elements, title)
         return await self._send("open_id", open_id, "interactive", card_content)
 
     async def reply_card(
-        self, message_id: str, content: str = "", loading: bool = False
+        self, message_id: str, content: str = "", loading: bool = False,
+        title: str = "",
     ) -> str:
         """回复卡片消息，返回 card_message_id"""
         elements = self._build_card_elements(content, loading)
-        card_content = self._build_card_json(elements)
+        card_content = self._build_card_json(elements, title)
         return await self._reply(message_id, "interactive", card_content)
 
     # ── 卡片更新 ──────────────────────────────────────────────
 
-    async def update_card(self, message_id: str, content: str) -> None:
+    async def update_card(self, message_id: str, content: str, title: str = "") -> None:
         """更新卡片内容（patch）"""
         elements = self._build_card_elements(content, loading=False)
-        card_content = self._build_card_json(elements)
+        card_content = self._build_card_json(elements, title)
         await self._patch(message_id, card_content)
 
     async def update_card_with_buttons(
@@ -202,14 +204,15 @@ class FeishuClient:
         return elements
 
     @staticmethod
-    def _build_card_json(elements: list[dict]) -> str:
+    def _build_card_json(elements: list[dict], title: str = "") -> str:
         """构建卡片消息的完整 JSON 内容"""
         card = {
             "config": {"wide_screen_mode": True},
-            "header": {
-                "title": {"tag": "plain_text", "content": "CLI Bridge"},
-                "template": "blue",
-            },
             "elements": elements,
         }
+        if title:
+            card["header"] = {
+                "title": {"tag": "plain_text", "content": title[:50]},
+                "template": "blue",
+            }
         return json.dumps(card, ensure_ascii=False)

@@ -378,23 +378,23 @@ def format_tool(name: str, inp: dict) -> str:
         cmd = inp.get("command", "")
         if len(cmd) > 80:
             cmd = cmd[:77] + "..."
-        return f"🔧 **执行命令：** `{cmd}`" if cmd else f"🔧 **执行命令...**"
+        return f" **执行命令：** `{cmd}`" if cmd else f" **执行命令...**"
     elif n in ("read_file", "read"):
-        return f"📄 **读取：** `{inp.get('file_path', inp.get('path', ''))}`"
+        return f" **读取：** `{inp.get('file_path', inp.get('path', ''))}`"
     elif n in ("write_file", "write"):
-        return f"✏️ **写入：** `{inp.get('file_path', inp.get('path', ''))}`"
+        return f" **写入：** `{inp.get('file_path', inp.get('path', ''))}`"
     elif n in ("edit_file", "edit"):
-        return f"✂️ **编辑：** `{inp.get('file_path', inp.get('path', ''))}`"
+        return f" **编辑：** `{inp.get('file_path', inp.get('path', ''))}`"
     elif n == "glob":
-        return f"🔍 **搜索文件：** `{inp.get('pattern', '')}`"
+        return f" **搜索文件：** `{inp.get('pattern', '')}`"
     elif n == "grep":
-        return f"🔎 **搜索内容：** `{inp.get('pattern', '')}`"
+        return f" **搜索内容：** `{inp.get('pattern', '')}`"
     elif n == "task":
         desc = inp.get('description', inp.get('prompt', ''))
-        return f"🤖 **子任务：** {desc[:40]}"
+        return f" **子任务：** {desc[:40]}"
     elif n == "webfetch":
-        return f"🌐 **抓取网页...**"
+        return f" **抓取网页...**"
     elif n == "websearch":
-        return f"🔍 **搜索：** {inp.get('query', '')}"
+        return f" **搜索：** {inp.get('query', '')}"
     else:
-        return f"⚙️ **{name}**"
+        return f" **{name}**"
