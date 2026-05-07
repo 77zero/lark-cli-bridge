@@ -94,7 +94,7 @@ class FeishuClient:
     async def download_image(self, message_id: str, image_key: str) -> Optional[str]:
         """下载飞书消息中的图片，返回本地临时文件路径"""
         try:
-            req = GetMessageResourceReq.builder() \
+            req = GetMessageResourceRequest.builder() \
                 .message_id(message_id) \
                 .file_key(image_key) \
                 .type("image") \
@@ -126,10 +126,10 @@ class FeishuClient:
         msg_type: str, content: str
     ) -> str:
         """发送消息底层方法"""
-        req = CreateMessageReq.builder() \
+        req = CreateMessageRequest.builder() \
             .receive_id_type(receive_id_type) \
             .request_body(
-                CreateMessageReqBody.builder()
+                CreateMessageRequestBody.builder()
                     .receive_id(receive_id)
                     .msg_type(msg_type)
                     .content(content)
@@ -143,10 +143,10 @@ class FeishuClient:
 
     async def _reply(self, message_id: str, msg_type: str, content: str) -> str:
         """回复消息底层方法"""
-        req = ReplyMessageReq.builder() \
+        req = ReplyMessageRequest.builder() \
             .message_id(message_id) \
             .request_body(
-                ReplyMessageReqBody.builder()
+                ReplyMessageRequestBody.builder()
                     .content(content)
                     .msg_type(msg_type)
                     .build()
@@ -159,10 +159,10 @@ class FeishuClient:
 
     async def _patch(self, message_id: str, content: str) -> None:
         """更新消息（patch）底层方法"""
-        req = PatchMessageReq.builder() \
+        req = PatchMessageRequest.builder() \
             .message_id(message_id) \
             .request_body(
-                PatchMessageReqBody.builder()
+                PatchMessageRequestBody.builder()
                     .content(content)
                     .build()
             ) \
@@ -180,7 +180,7 @@ class FeishuClient:
         if loading:
             elements.append({
                 "tag": "markdown",
-                "content": content or "⏳ 思考中...",
+                "content": content or "[...] 思考中...",
             })
             if not content:
                 elements.append({
