@@ -54,5 +54,5 @@ STREAM_CHUNK_SIZE = int(os.getenv("STREAM_CHUNK_SIZE", "20"))
 # 上线通知接收人（留空不发送）
 OWNER_OPEN_ID = os.getenv("OWNER_OPEN_ID", "")
 
-# 会话持久化目录
-SESSIONS_DIR = os.path.expanduser("~/.cli_lark_bridge")
+# 会话持久化目录（按 CLI 类型隔离）
+SESSIONS_DIR = os.path.expanduser(f"~/.cli_lark_bridge_{CLI_TYPE}")
