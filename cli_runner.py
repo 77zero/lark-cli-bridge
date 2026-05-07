@@ -280,7 +280,8 @@ async def _run_claude(
 
                 try:
                     data = json.loads(line)
-                except json.JSONDecodeError:
+                except (json.JSONDecodeError, ValueError):
+                    # 跳过非 JSON 行（启动横幅、stderr 混杂等）
                     continue
 
                 event_type = data.get("type")

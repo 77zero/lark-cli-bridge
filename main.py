@@ -16,6 +16,7 @@ import os
 import threading
 import time
 import traceback
+import atexit
 from typing import Optional
 
 # 确保项目目录在 sys.path 最前面
@@ -31,21 +32,26 @@ from cli_runner import run_cli, format_tool
 from run_control import ActiveRun, ActiveRunRegistry, stop_active_run
 
 
-# ── 看门狗：定时重启防止 WebSocket 假死 ──────────────────────
+# ── 看门狗：自适应重启 ──────────────────────────────────────
 
-MAX_UPTIME = 4 * 3600  # 最长运行 4 小时后主动重启
+MAX_UPTIME = 4 * 3600          # 最长连续运行 4 小时
+IDLE_RESTART_THRESHOLD = 1800   # 空闲超过 30 分钟才允许重启
 _start_time = time.time()
+_last_event = time.time()
 
 
 def _watchdog():
-    """后台线程，定期检查进程健康。超时主动退出让 NSSM 拉起。"""
+    """后台线程：仅在长时间无消息时才主动重启，避免打断活跃对话。"""
     while True:
         time.sleep(300)  # 每 5 分钟检查
         uptime = time.time() - _start_time
-        if uptime > MAX_UPTIME:
-            print(f"[watchdog] 运行 {uptime/3600:.1f}h，定时重启刷新连接", flush=True)
+        idle = time.time() - _last_event
+
+        if uptime > MAX_UPTIME and idle > IDLE_RESTART_THRESHOLD:
+            print(f"[watchdog] 运行{uptime/3600:.1f}h, 空闲{idle/60:.0f}min, 定时重启", flush=True)
             os._exit(0)
-        print(f"[watchdog] uptime={uptime/3600:.1f}h", flush=True)
+
+        print(f"[watchdog] uptime={uptime/3600:.1f}h idle={idle/60:.0f}min", flush=True)
 
 
 # ── 全局单例 ──────────────────────────────────────────────────
@@ -186,6 +192,9 @@ def on_message_receive(data: P2ImMessageReceiveV1) -> None:
     飞书 SDK 同步回调入口。
     收到消息后立即返回（3 秒内），异步任务调度到 _bot_loop 执行。
     """
+    global _last_event
+    _last_event = time.time()
+
     # 同步阶段：快速获取必要信息
     user_id = _extract_sender_id(data)
     text = _extract_text(data)
@@ -423,7 +432,37 @@ def _start_opencode_serve():
 
 
 def main():
-    print(f"[启动] cli_lark_bridge 启动中...")
+    # ── PID 锁：防止 NSSM 快速重启导致多实例并发 ────────────
+    pid_file = os.path.join(config.SESSIONS_DIR, "pid.lock")
+    os.makedirs(config.SESSIONS_DIR, exist_ok=True)
+
+    if os.path.exists(pid_file):
+        try:
+            with open(pid_file) as f:
+                old_pid = int(f.read().strip())
+            # 检查旧进程是否还活着
+            try:
+                os.kill(old_pid, 0)  # 信号 0 不杀进程，仅检测
+                print(f"[PID锁] 进程 {old_pid} 仍在运行，退出", flush=True)
+                sys.exit(1)
+            except OSError:
+                # 旧进程已死，可以覆盖
+                print(f"[PID锁] 旧进程 {old_pid} 已退出，覆盖锁文件", flush=True)
+        except (ValueError, FileNotFoundError):
+            pass
+
+    with open(pid_file, "w") as f:
+        f.write(str(os.getpid()))
+
+    # 退出时清理
+    def _cleanup_pid():
+        try:
+            os.remove(pid_file)
+        except OSError:
+            pass
+    atexit.register(_cleanup_pid)
+
+    print(f"[启动] cli_lark_bridge 启动中... [PID={os.getpid()}]")
     print(f"   CLI 类型    : {config.CLI_TYPE}")
     print(f"   CLI 命令    : {' '.join(config.get_cli_command())}")
     print(f"   工作目录    : {config.CLI_WORK_DIR}")
