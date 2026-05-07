@@ -7,7 +7,7 @@ $python = (Get-Command python).Source
 
 # ── opencode 实例 ──────────────────────────────────────────
 $name_opencode = "CLILarkBridge-OpenCode"
-$dir_opencode = "D:\Project\cli_lark_bridge"
+$dir_opencode = "D:\Project\cli_lark_bridge_opencode"
 
 nssm install $name_opencode $python "$dir_opencode\main.py"
 nssm set $name_opencode AppDirectory $dir_opencode
@@ -19,7 +19,7 @@ nssm set $name_opencode AppStderr "$dir_opencode\logs\stderr.log"
 
 # ── claude 实例 ────────────────────────────────────────────
 $name_claude = "CLILarkBridge-Claude"
-$dir_claude = "D:\Project\cli_lark_bridge_claude"
+$dir_claude = "D:\Project\cli_lark_bridge_claudecode"
 
 nssm install $name_claude $python "$dir_claude\main.py"
 nssm set $name_claude AppDirectory $dir_claude
