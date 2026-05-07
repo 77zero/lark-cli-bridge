@@ -1,0 +1,388 @@
+"""
+cli_lark_bridge — 飞书 × CLI 工具桥接
+通过飞书 WebSocket 长连接接收私聊消息，调用本机 CLI 工具并流式回复。
+
+启动：python main.py
+
+支持的 CLI 工具（通过 .env 中 CLI_TYPE 配置）：
+  - opencode: 调用 opencode run
+  - claude:   调用 claude -p --output-format stream-json
+"""
+
+import asyncio
+import json
+import sys
+import os
+import threading
+import time
+import traceback
+from typing import Optional
+
+# 确保项目目录在 sys.path 最前面
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+import lark_oapi as lark
+from lark_oapi.api.im.v1.model import P2ImMessageReceiveV1
+
+import bot_config as config
+from feishu_client import FeishuClient
+from session_store import SessionStore
+from cli_runner import run_cli, format_tool
+from run_control import ActiveRun, ActiveRunRegistry, stop_active_run
+
+
+# ── 看门狗：定时重启防止 WebSocket 假死 ──────────────────────
+
+MAX_UPTIME = 4 * 3600  # 最长运行 4 小时后主动重启
+_start_time = time.time()
+
+
+def _watchdog():
+    """后台线程，定期检查进程健康。超时主动退出让 NSSM 拉起。"""
+    while True:
+        time.sleep(300)  # 每 5 分钟检查
+        uptime = time.time() - _start_time
+        if uptime > MAX_UPTIME:
+            print(f"[watchdog] 运行 {uptime/3600:.1f}h，定时重启刷新连接", flush=True)
+            os._exit(0)
+        print(f"[watchdog] uptime={uptime/3600:.1f}h", flush=True)
+
+
+# ── 全局单例 ──────────────────────────────────────────────────
+
+# 独立的 asyncio 事件循环
+_bot_loop: asyncio.AbstractEventLoop = asyncio.new_event_loop()
+
+
+def _start_bot_loop():
+    asyncio.set_event_loop(_bot_loop)
+    _bot_loop.run_forever()
+
+
+threading.Thread(target=_start_bot_loop, daemon=True, name="bot-loop").start()
+
+lark_client = lark.Client.builder() \
+    .app_id(config.FEISHU_APP_ID) \
+    .app_secret(config.FEISHU_APP_SECRET) \
+    .log_level(lark.LogLevel.INFO) \
+    .build()
+
+feishu = FeishuClient(lark_client)
+store = SessionStore()
+_active_runs = ActiveRunRegistry()
+
+# 飞书消息处理超时（3 秒内必须返回，否则重推）
+FEISHU_TIMEOUT = 2
+
+
+# ── 上线通知 ──────────────────────────────────────────────────
+
+async def _send_boot_notification():
+    """启动时发送上线通知"""
+    if not config.OWNER_OPEN_ID:
+        return
+    try:
+        msg = (
+            f"✅ **{config.CLI_TYPE} Bridge 已上线**\n"
+            f"工作目录: `{config.CLI_WORK_DIR}`\n"
+            f"启动时间: {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+            f"发送消息即可开始对话。\n"
+            f"输入 `/new` 开启新会话\n"
+            f"输入 `/stop` 停止当前任务"
+        )
+        await feishu.send_card_to_user(config.OWNER_OPEN_ID, content=msg, loading=False)
+        print(f"[上线通知] 已发送到 {config.OWNER_OPEN_ID[:8]}...", flush=True)
+    except Exception as e:
+        print(f"[上线通知] 发送失败: {e}", flush=True)
+
+
+# ── /new 和 /stop 命令处理 ──────────────────────────────────
+
+async def _handle_new_command(user_id: str) -> str:
+    """开启新会话"""
+    await store.new_session(user_id)
+    # 同时停止正在运行的任务
+    active = _active_runs.get_run(user_id)
+    if active:
+        await stop_active_run(_active_runs, user_id)
+    return "✅ 已开启新会话，发送消息开始对话。"
+
+
+async def _handle_stop_command(user_id: str) -> str:
+    """停止当前任务"""
+    active_run = _active_runs.get_run(user_id)
+    if active_run is None:
+        return "当前没有正在运行的任务。"
+    if active_run.stop_requested:
+        return "正在停止当前任务，请稍候..."
+
+    stopped = await stop_active_run(
+        _active_runs,
+        user_id,
+        on_stopped=lambda r: _announce_stopped(r),
+    )
+    if not stopped:
+        return "当前没有正在运行的任务。"
+    return "已发送停止请求，正在终止..."
+
+
+async def _announce_stopped(active_run: ActiveRun):
+    """任务停止后更新卡片"""
+    try:
+        await feishu.update_card(active_run.card_msg_id, "⏹ 已停止当前任务")
+    except Exception:
+        pass
+
+
+# ── 核心消息处理 ─────────────────────────────────────────────
+
+def _extract_text(event: P2ImMessageReceiveV1) -> str:
+    """从消息事件中提取文本内容"""
+    msg = event.event.message
+    if msg.message_type != "text":
+        return ""
+    try:
+        return json.loads(msg.content).get("text", "").strip()
+    except Exception:
+        return ""
+
+
+def _extract_sender_id(event: P2ImMessageReceiveV1) -> str:
+    """提取发送者的 open_id"""
+    return event.event.sender.sender_id.open_id
+
+
+def on_message_receive(data: P2ImMessageReceiveV1) -> None:
+    """
+    飞书 SDK 同步回调入口。
+    收到消息后立即返回（3 秒内），异步任务调度到 _bot_loop 执行。
+    """
+    # 同步阶段：快速获取必要信息
+    user_id = _extract_sender_id(data)
+    text = _extract_text(data)
+    msg = data.event.message
+
+    if not text:
+        return
+
+    # /stop 和 /new 在同步阶段快速响应，不排队等 CLI
+    if text.lower() in ("/stop", "/stop") or text.strip().endswith("/stop"):
+        asyncio.run_coroutine_threadsafe(
+            _handle_stop_quick(user_id, msg.message_id), _bot_loop
+        )
+        return
+
+    if text.lower() in ("/new", "/new") or text.strip().endswith("/new"):
+        asyncio.run_coroutine_threadsafe(
+            _handle_new_quick(user_id, msg.message_id), _bot_loop
+        )
+        return
+
+    # 调度异步处理
+    asyncio.run_coroutine_threadsafe(
+        handle_message_async(data), _bot_loop
+    )
+
+
+async def _handle_stop_quick(user_id: str, message_id: str):
+    """快速响应 /stop"""
+    reply = await _handle_stop_command(user_id)
+    await feishu.reply_card(message_id, content=reply, loading=False)
+
+
+async def _handle_new_quick(user_id: str, message_id: str):
+    """快速响应 /new"""
+    reply = await _handle_new_command(user_id)
+    await feishu.reply_card(message_id, content=reply, loading=False)
+
+
+async def handle_message_async(event: P2ImMessageReceiveV1):
+    """异步处理一条飞书消息"""
+    msg = event.event.message
+    user_id = _extract_sender_id(event)
+    text = _extract_text(event)
+
+    print(f"[消息] user={user_id[:8]}... text={text[:50]}", flush=True)
+
+    # ── 处理图片消息 ──────────────────────────────────────────
+    img_path: Optional[str] = None
+    if msg.message_type == "image":
+        try:
+            image_key = json.loads(msg.content).get("image_key", "")
+            if image_key:
+                img_path = await feishu.download_image(msg.message_id, image_key)
+                if img_path:
+                    text = f"[用户发送了一张图片，路径：{img_path}，请读取并分析这张图片]"
+                else:
+                    await feishu.reply_card(msg.message_id, content="❌ 下载图片失败", loading=False)
+                    return
+        except Exception as e:
+            print(f"[image] 下载失败: {e}", flush=True)
+            await feishu.reply_card(msg.message_id, content=f"❌ 下载图片失败：{e}", loading=False)
+            return
+
+    if msg.message_type not in ("text", "image"):
+        return
+
+    if not text:
+        return
+
+    # ── 回复已读 ──────────────────────────────────────────────
+    try:
+        await feishu.reply_card(msg.message_id, content="✅ 已读，正在处理...", loading=False)
+    except Exception as e:
+        print(f"[warn] 已读回执发送失败: {e}", flush=True)
+
+    # ── 自动打断 ──────────────────────────────────────────────
+    active = _active_runs.get_run(user_id)
+    if active and not active.stop_requested:
+        print(f"[打断] 新消息到达，自动停止当前任务", flush=True)
+        await stop_active_run(_active_runs, user_id)
+
+    # ── 调用 CLI ──────────────────────────────────────────────
+    session = await store.get_current(user_id)
+
+    # 发送"思考中"占位卡片
+    try:
+        card_msg_id = await feishu.reply_card(msg.message_id, loading=True)
+    except Exception as e:
+        print(f"[error] 发送思考中卡片失败: {e}", flush=True)
+        await feishu.reply_card(msg.message_id, content=f"❌ 发送失败：{e}", loading=False)
+        return
+
+    await _run_and_display(user_id, text, card_msg_id, session)
+
+
+async def _run_and_display(
+    user_id: str, text: str, card_msg_id: str, session,
+):
+    """调用 CLI 并流式展示结果"""
+    active_run = _active_runs.start_run(user_id, card_msg_id)
+
+    accumulated = ""
+    tool_history: list[str] = []
+    last_push_time = 0.0
+    push_failures = 0
+    _PUSH_INTERVAL = 0.4  # 400ms 推送间隔
+    _MAX_DISPLAY = 4000
+
+    async def push(content: str):
+        nonlocal push_failures
+        if push_failures >= 3:
+            return
+        try:
+            await feishu.update_card(card_msg_id, content)
+            push_failures = 0
+        except Exception as e:
+            push_failures += 1
+            print(f"[warn] 推送失败 ({push_failures}/3): {e}", flush=True)
+
+    def _build_display() -> str:
+        parts = []
+        if tool_history:
+            parts.append("\n".join(tool_history[-5:]))
+        if accumulated:
+            if parts:
+                parts.append("")
+            d = accumulated
+            if len(d) > _MAX_DISPLAY:
+                d = "...\n\n" + d[-_MAX_DISPLAY:]
+            parts.append(d)
+        return "\n".join(parts) if parts else "⏳ 思考中..."
+
+    async def on_tool_use(name: str, inp: dict):
+        nonlocal accumulated, last_push_time
+        tool_line = format_tool(name, inp)
+        if inp and tool_history:
+            tool_history[-1] = tool_line
+        else:
+            tool_history.append(tool_line)
+        await push(_build_display())
+        last_push_time = time.time()
+
+    async def on_text_chunk(chunk: str):
+        nonlocal accumulated, last_push_time
+        accumulated += chunk
+        now = time.time()
+        if now - last_push_time >= _PUSH_INTERVAL:
+            await push(_build_display())
+            last_push_time = now
+
+    try:
+        print(f"[run_cli] 开始调用 {config.CLI_TYPE}...", flush=True)
+        full_text, new_session_id = await run_cli(
+            message=text,
+            session_id=session.session_id,
+            on_text_chunk=on_text_chunk,
+            on_tool_use=on_tool_use,
+            on_process_start=lambda proc: _active_runs.attach_process(user_id, proc),
+        )
+        print(f"[run_cli] 完成, session={new_session_id}", flush=True)
+    except Exception as e:
+        if active_run.stop_requested:
+            return
+        print(f"[error] CLI 运行失败: {type(e).__name__}: {e}", flush=True)
+        traceback.print_exc()
+        try:
+            await feishu.update_card(card_msg_id, f"❌ CLI 执行出错：{type(e).__name__}: {e}")
+        except Exception:
+            pass
+        return
+    finally:
+        _active_runs.clear_run(user_id, active_run)
+
+    # 最终更新卡片
+    final = full_text or accumulated or "（无输出）"
+    try:
+        await feishu.update_card(card_msg_id, final)
+    except Exception as e:
+        print(f"[error] 卡片更新失败: {e}", flush=True)
+        try:
+            await feishu.send_text_to_user(user_id, final)
+        except Exception as e2:
+            print(f"[error] 文本回退也失败: {e2}", flush=True)
+
+    # 保存会话
+    await store.on_cli_response(user_id, new_session_id, text)
+
+
+# ── 启动 ──────────────────────────────────────────────────────
+
+def main():
+    print(f"🚀 cli_lark_bridge 启动中...")
+    print(f"   CLI 类型    : {config.CLI_TYPE}")
+    print(f"   CLI 命令    : {' '.join(config.get_cli_command())}")
+    print(f"   工作目录    : {config.CLI_WORK_DIR}")
+    print(f"   App ID      : {config.FEISHU_APP_ID}")
+
+    # 事件处理器
+    handler = lark.EventDispatcherHandler.builder("", "") \
+        .register_p2_im_message_receive_v1(on_message_receive) \
+        .build()
+
+    ws_client = lark.ws.Client(
+        config.FEISHU_APP_ID,
+        config.FEISHU_APP_SECRET,
+        event_handler=handler,
+        log_level=lark.LogLevel.INFO,
+    )
+
+    # 启动看门狗
+    threading.Thread(target=_watchdog, daemon=True).start()
+
+    # 延迟发送上线通知（等 WebSocket 连上）
+    def _delayed_notify():
+        time.sleep(5)
+        future = asyncio.run_coroutine_threadsafe(_send_boot_notification(), _bot_loop)
+        try:
+            future.result(timeout=10)
+        except Exception:
+            pass
+    threading.Thread(target=_delayed_notify, daemon=True).start()
+
+    print("✅ 连接飞书 WebSocket 长连接（自动重连）...")
+    ws_client.start()  # 阻塞，内部运行事件循环
+
+
+if __name__ == "__main__":
+    main()
