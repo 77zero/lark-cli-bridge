@@ -10,15 +10,15 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ── 桥接前缀 ──────────────────────────────────────────────────
-# 设置 BRIDGE_NAME=opencode 则优先读取 BRIDGE_OPENCODE_FEISHU_APP_ID 等
+# 设置 BRIDGE_NAME=opencode 则优先读取 OPENCODE_FEISHU_APP_ID 等
 # 不设置则直接读取 FEISHU_APP_ID（向后兼容）
 _prefix = os.environ.get("BRIDGE_NAME", "").strip().upper()
 if _prefix:
-    _prefix = f"BRIDGE_{_prefix}_"
+    _prefix = f"{_prefix}_"
 
 
 def _bridge_env(key: str, default: str = "") -> str:
-    """桥接级变量：优先 BRIDGE_{NAME}_{KEY}，回退 KEY（向后兼容单桥接）"""
+    """实例变量：优先 {NAME}_{KEY}，回退 KEY（向后兼容单桥接）"""
     if _prefix:
         val = os.environ.get(f"{_prefix}{key}")
         if val is not None:
