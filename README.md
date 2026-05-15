@@ -202,6 +202,28 @@ nssm start CLILarkBridge-Claude
 | 图片消息 | 下载后传给 CLI 分析 |
 | 文本消息 | 作为 prompt 发送给 CLI，流式返回结果 |
 
+## 开发说明
+
+本项目基于 [joewongjc/feishu-claude-code](https://github.com/joewongjc/feishu-claude-code)（MIT 协议）修改而来。
+
+**借用模块：**
+- `session_store.py` — 会话持久化骨架
+- `cli_runner.py` — Claude stream-json 流式解析逻辑
+- `run_control.py` — 任务中断与进程控制
+
+**精简模块（未保留）：**
+- 群聊支持、斜杠命令菜单、模型切换、按钮交互
+- CLI handover、ngrok 回调
+
+**新增模块：**
+- opencode CLI 适配（serve 模式 + 传统模式）
+- PID 锁防多实例并发
+- 自适应看门狗（空闲检测 + 定时重启）
+- 已读表情回执（替代文本消息）
+- NSSM Windows 服务部署脚本
+- BRIDGE_NAME 多桥接前缀机制
+- Linux 启动脚本
+
 ## 技术细节
 
 - **飞书 SDK** — 使用 `lark-oapi` WebSocket 长连接，3 秒内必须返回 HTTP 200 否则重推，实际处理在独立 asyncio 事件循环中异步完成
