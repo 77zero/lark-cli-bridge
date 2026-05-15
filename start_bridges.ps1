@@ -39,7 +39,6 @@ $openProc = Start-Process -FilePath $Python `
     -ArgumentList "`"$ScriptDir\main.py`"" `
     -WorkingDirectory $ScriptDir `
     -RedirectStandardOutput $OpenCodeLog `
-    -RedirectStandardError $OpenCodeLog `
     -NoNewWindow `
     -PassThru
 
@@ -56,7 +55,6 @@ $claudeProc = Start-Process -FilePath $Python `
     -ArgumentList "`"$ScriptDir\main.py`"" `
     -WorkingDirectory $ScriptDir `
     -RedirectStandardOutput $ClaudeLog `
-    -RedirectStandardError $ClaudeLog `
     -NoNewWindow `
     -PassThru
 
