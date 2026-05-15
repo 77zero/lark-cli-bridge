@@ -37,7 +37,7 @@ def _direct_env(key: str, default: str = "") -> str:
     return default
 
 
-# ── 桥接级变量（受 BRIDGE_NAME 影响）─────────────────────────
+# ── 实例变量（受 BRIDGE_NAME 影响）─────────────────────────
 
 # 飞书凭证（必填）
 FEISHU_APP_ID = _bridge_env("FEISHU_APP_ID")
