@@ -90,15 +90,25 @@ python main.py
 ### 方式一：启动脚本
 
 ```powershell
-.\start_bridges.ps1    # 后台启动两个进程
-.\stop_bridges.ps1     # 停止
+# Windows
+.\start_bridges.ps1
+.\stop_bridges.ps1
+
+# Linux / macOS
+./start_bridges.sh
+./stop_bridges.sh
 ```
 
 ### 方式二：手动启动
 
-```powershell
-$env:BRIDGE_NAME="opencode"; python main.py   # 终端 1
-$env:BRIDGE_NAME="claude"; python main.py     # 终端 2
+```bash
+# Windows PowerShell
+$env:BRIDGE_NAME="opencode"; python main.py
+$env:BRIDGE_NAME="claude"; python main.py
+
+# Linux / macOS
+BRIDGE_NAME=opencode python main.py &
+BRIDGE_NAME=claude python main.py &
 ```
 
 ### 配置说明
@@ -128,8 +138,10 @@ lark-cli-bridge/
 ├── bot_config.py        # 配置管理，从 .env 读取，支持 BRIDGE_NAME 前缀
 ├── session_store.py     # 会话持久化，用户级 session 映射
 ├── run_control.py       # 任务运行控制，管理活跃 CLI 进程的启停
-├── start_bridges.ps1    # 双服务启动脚本（设置 BRIDGE_NAME 启动两个进程）
-├── stop_bridges.ps1     # 双服务停止脚本
+├── start_bridges.ps1    # Windows 双服务启动脚本
+├── stop_bridges.ps1     # Windows 双服务停止脚本
+├── start_bridges.sh     # Linux/macOS 双服务启动脚本
+├── stop_bridges.sh      # Linux/macOS 双服务停止脚本
 ├── deploy/
 │   ├── install_service.ps1   # NSSM 单服务一键安装（交互式）
 │   └── install_services.ps1  # NSSM 双服务快速安装（自动设 BRIDGE_NAME）
@@ -165,9 +177,18 @@ nssm start CLILarkBridge-Claude
 
 ### 后台运行（免服务）
 
+**Windows:**
+
 ```powershell
 .\start_bridges.ps1    # 启动 opencode + claude 后台进程
 .\stop_bridges.ps1     # 停止所有后台进程
+```
+
+**Linux / macOS:**
+
+```bash
+./start_bridges.sh     # 启动 opencode + claude 后台进程
+./stop_bridges.sh      # 停止所有后台进程
 ```
 
 日志输出到 `logs/` 目录。
