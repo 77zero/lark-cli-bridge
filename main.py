@@ -385,6 +385,20 @@ async def _run_and_display(
 
 # ── 启动 ──────────────────────────────────────────────────────
 
+def _check_cli_version():
+    """启动时检查 CLI 工具版本是否与已知兼容版本一致，不一致仅警告"""
+    import subprocess as sp
+    expected = config.COMPAT_CLAUDE if config.CLI_TYPE == "claude" else config.COMPAT_OPENCODE
+    cmd = config.get_cli_command() + ["--version"]
+    try:
+        result = sp.run(cmd, capture_output=True, text=True, timeout=10, cwd=config.CLI_WORK_DIR)
+        actual = (result.stdout + result.stderr).strip().split("\n")[0]
+        if actual != expected:
+            print(f"   [注意] {config.CLI_TYPE} 版本 {actual}，已测试版本 {expected}，如有异常请反馈")
+    except Exception:
+        pass
+
+
 def _start_opencode_serve():
     """后台启动 opencode serve 进程（如果配置了）"""
     if config.CLI_TYPE != "opencode":
@@ -482,7 +496,7 @@ def main():
     print(f"   工作目录    : {config.CLI_WORK_DIR}")
     print(f"   App ID      : {config.FEISHU_APP_ID}")
 
-    # 启动 opencode serve（如果配置了）
+    _check_cli_version()
     _start_opencode_serve()
 
     # 事件处理器

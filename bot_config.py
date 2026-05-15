@@ -11,6 +11,10 @@ load_dotenv()
 
 __version__ = "0.1.0"
 
+# 已知兼容版本（仅作参考提示，非强制）
+COMPAT_OPENCODE = "1.15.0"
+COMPAT_CLAUDE = "2.1.142"
+
 # ── 桥接前缀 ──────────────────────────────────────────────────
 # 设置 BRIDGE_NAME=opencode 则优先读取 OPENCODE_FEISHU_APP_ID 等
 # 不设置则直接读取 FEISHU_APP_ID（向后兼容）
