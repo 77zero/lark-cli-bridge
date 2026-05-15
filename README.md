@@ -17,7 +17,7 @@
 - **双 CLI 支持** — 兼容 [opencode](https://github.com/nicepkg/opencode) 和 [claude](https://github.com/anthropics/claude-code)，通过 `.env` 切换
 - **多桥接并发** — 同一份代码可同时运行 opencode + claude 两个桥接（各自独立飞书应用）
 - **流式卡片推送** — CLI 输出实时更新飞书卡片（400ms 间隔、4000 字截断、工具调用进度展示）
-- **会话持久化** — opencode serve 模式支持 `--attach --session` 跨消息保持对话上下文
+- **会话持久化** — opencode 通过 `--session` 跨消息保持对话上下文，claude 通过 `--resume` 实现
 - **图片识别** — 支持接收飞书图片消息，下载后传给 CLI 分析
 - **命令控制** — `/new` 开启新会话、`/stop` 终止当前任务
 - **自动打断** — 新消息到达自动停止当前运行，立即响应最新请求
@@ -29,6 +29,14 @@
 
 - Windows / Linux / macOS
 - Python 3.11+
+
+| 组件 | 已测试版本 | 说明 |
+|------|----------|------|
+| lark-cli-bridge | **0.1.0** | 本项目 |
+| opencode | 1.15.0 | `CLI_TYPE=opencode` 时使用 |
+| claude (Claude Code) | 2.1.142 | `CLI_TYPE=claude` 时使用 |
+| lark-oapi | 1.6.1 | 飞书 Python SDK |
+
 - 飞书企业自建应用（[open.feishu.cn](https://open.feishu.cn/app)）
 
 ## 快速开始

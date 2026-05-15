@@ -476,7 +476,7 @@ def main():
             pass
     atexit.register(_cleanup_pid)
 
-    print(f"[启动] cli_lark_bridge 启动中... [PID={os.getpid()}]")
+    print(f"[启动] lark-cli-bridge v{config.__version__} [PID={os.getpid()}]")
     print(f"   CLI 类型    : {config.CLI_TYPE}")
     print(f"   CLI 命令    : {' '.join(config.get_cli_command())}")
     print(f"   工作目录    : {config.CLI_WORK_DIR}")

@@ -9,6 +9,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+__version__ = "0.1.0"
+
 # ── 桥接前缀 ──────────────────────────────────────────────────
 # 设置 BRIDGE_NAME=opencode 则优先读取 OPENCODE_FEISHU_APP_ID 等
 # 不设置则直接读取 FEISHU_APP_ID（向后兼容）
