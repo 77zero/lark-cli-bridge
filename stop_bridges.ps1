@@ -10,21 +10,21 @@ if (-not (Test-Path $PidFile)) {
     exit 0
 }
 
-$pids = Get-Content $PidFile
+$procIds = Get-Content $PidFile
 $stopped = 0
 
-foreach ($pid in $pids) {
+foreach ($procId in $procIds) {
     try {
-        $proc = Get-Process -Id $pid -ErrorAction SilentlyContinue
+        $proc = Get-Process -Id $procId -ErrorAction SilentlyContinue
         if ($proc) {
-            Write-Host "[停止] PID $pid ($($proc.ProcessName))" -ForegroundColor Yellow
-            Stop-Process -Id $pid -Force
+            Write-Host "[停止] PID $procId ($($proc.ProcessName))" -ForegroundColor Yellow
+            Stop-Process -Id $procId -Force
             $stopped++
         } else {
-            Write-Host "[过期] PID $pid 已不存在" -ForegroundColor Gray
+            Write-Host "[过期] PID $procId 已不存在" -ForegroundColor Gray
         }
     } catch {
-        Write-Host "[过期] PID $pid 已不存在" -ForegroundColor Gray
+        Write-Host "[过期] PID $procId 已不存在" -ForegroundColor Gray
     }
 }
 

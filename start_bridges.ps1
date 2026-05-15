@@ -14,12 +14,12 @@ New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 if (Test-Path $PidFile) {
     Write-Host "[清理] 检查已有进程..." -ForegroundColor Yellow
     $oldPids = Get-Content $PidFile
-    foreach ($pid in $oldPids) {
+    foreach ($procId in $oldPids) {
         try {
-            $proc = Get-Process -Id $pid -ErrorAction SilentlyContinue
+            $proc = Get-Process -Id $procId -ErrorAction SilentlyContinue
             if ($proc) {
-                Write-Host "  停止进程 $pid ($($proc.ProcessName))" -ForegroundColor Yellow
-                Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue
+                Write-Host "  停止进程 $procId ($($proc.ProcessName))" -ForegroundColor Yellow
+                Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
             }
         } catch {}
     }

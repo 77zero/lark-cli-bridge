@@ -204,13 +204,13 @@ def on_message_receive(data: P2ImMessageReceiveV1) -> None:
         return
 
     # /stop 和 /new 在同步阶段快速响应，不排队等 CLI
-    if text.lower() in ("/stop", "/stop") or text.strip().endswith("/stop"):
+    if text.lower() == "/stop" or text.strip().endswith("/stop"):
         asyncio.run_coroutine_threadsafe(
             _handle_stop_quick(user_id, msg.message_id), _bot_loop
         )
         return
 
-    if text.lower() in ("/new", "/new") or text.strip().endswith("/new"):
+    if text.lower() == "/new" or text.strip().endswith("/new"):
         asyncio.run_coroutine_threadsafe(
             _handle_new_quick(user_id, msg.message_id), _bot_loop
         )
@@ -431,6 +431,23 @@ def _start_opencode_serve():
         return None
 
 
+def _pid_exists(pid: int) -> bool:
+    """检查进程是否存在（跨平台）"""
+    if os.name == "nt":
+        import subprocess as _sp
+        result = _sp.run(
+            ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
+            capture_output=True, text=True, timeout=5
+        )
+        return str(pid) in result.stdout
+    else:
+        try:
+            os.kill(pid, 0)
+            return True
+        except OSError:
+            return False
+
+
 def main():
     # ── PID 锁：防止 NSSM 快速重启导致多实例并发 ────────────
     pid_file = os.path.join(config.SESSIONS_DIR, "pid.lock")
@@ -441,13 +458,10 @@ def main():
             with open(pid_file) as f:
                 old_pid = int(f.read().strip())
             # 检查旧进程是否还活着
-            try:
-                os.kill(old_pid, 0)  # 信号 0 不杀进程，仅检测
+            if _pid_exists(old_pid):
                 print(f"[PID锁] 进程 {old_pid} 仍在运行，退出", flush=True)
                 sys.exit(1)
-            except OSError:
-                # 旧进程已死，可以覆盖
-                print(f"[PID锁] 旧进程 {old_pid} 已退出，覆盖锁文件", flush=True)
+            print(f"[PID锁] 旧进程 {old_pid} 已退出，覆盖锁文件", flush=True)
         except (ValueError, FileNotFoundError):
             pass
 
