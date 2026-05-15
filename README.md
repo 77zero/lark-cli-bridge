@@ -44,7 +44,7 @@
 ### 1. 克隆并安装依赖
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/77zero/lark-cli-bridge.git
 cd lark-cli-bridge
 pip install -r requirements.txt
 ```
@@ -62,18 +62,17 @@ cp .env.example .env
 FEISHU_APP_ID=cli_xxxxxxxxxxxxxxxx
 FEISHU_APP_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
-# CLI 类型：opencode / claude
+# CLI 类型：opencode 或 claude
 CLI_TYPE=opencode
 
 # CLI 工作目录
 CLI_WORK_DIR=D:/project
 
-# opencode serve 模式（推荐，支持会话持久化）
-OPENCODE_SERVE_PORT=4096
-OPENCODE_SERVE_PASSWORD=your-password
+# opencode serve 模式（推荐，端口 4096，自动拉起）
+# OPENCODE_SERVE_PORT=4096
 
 # 上线通知接收人（飞书 open_id，可选）
-OWNER_OPEN_ID=ou_xxxxxxxxxxxxxxxx
+# OWNER_OPEN_ID=ou_xxxxxxxxxxxxxxxx
 ```
 
 ### 3. 启动
@@ -121,12 +120,13 @@ BRIDGE_NAME=claude python main.py &
 
 ### 配置说明
 
-`.env` 中不带前缀的配置作为默认值（即 opencode）。另一个桥接通过前缀覆盖：
+详细配置规则见 `.env.example` 第三节。简要示例：
 
 ```ini
-# 默认（opencode）
-FEISHU_APP_ID=cli_xxx
-CLI_TYPE=opencode
+# opencode 桥接（BRIDGE_NAME=opencode 时优先读取）
+OPENCODE_FEISHU_APP_ID=cli_xxx
+OPENCODE_CLI_TYPE=opencode
+OPENCODE_CLI_WORK_DIR=D:/project
 
 # claude 桥接（BRIDGE_NAME=claude 时优先读取）
 CLAUDE_FEISHU_APP_ID=cli_yyy
@@ -134,7 +134,7 @@ CLAUDE_CLI_TYPE=claude
 CLAUDE_CLI_WORK_DIR=D:/project
 ```
 
-规则：`BRIDGE_NAME=claude` → 优先读 `CLAUDE_FEISHU_APP_ID`，未设置则回退读 `FEISHU_APP_ID`。
+命名规则：`{BRIDGE_NAME大写}_{原始变量名}`，未填则回退第一节基础配置。
 
 ## 项目结构
 
@@ -224,7 +224,7 @@ nssm start CLILarkBridge-Claude
 - CLI handover、ngrok 回调
 
 **新增模块：**
-- opencode CLI 适配（serve 模式 + 传统模式）
+- opencode CLI 适配（--session 会话持久化）
 - PID 锁防多实例并发
 - 自适应看门狗（空闲检测 + 定时重启）
 - 已读表情回执（替代文本消息）
@@ -235,7 +235,7 @@ nssm start CLILarkBridge-Claude
 ## 技术细节
 
 - **飞书 SDK** — 使用 `lark-oapi` WebSocket 长连接，3 秒内必须返回 HTTP 200 否则重推，实际处理在独立 asyncio 事件循环中异步完成
-- **流式输出** — claude 模式解析 `stream-json` 逐行输出；opencode 模式读取完整 stdout
+- **流式输出** — claude 模式解析 `stream-json` 逐行实时输出；opencode 模式读取完整响应文本
 - **卡片协议** — 飞书消息卡片（`interactive` 类型），通过 `patch` API 实时更新内容实现打字机效果
 - **子进程健康** — 静默 5 分钟检测子进程存活，无活动则终止防挂死
 - **看门狗** — 每 5 分钟检查，仅在运行超 4 小时且空闲超 30 分钟时主动退出（让 NSSM 拉起新进程）
