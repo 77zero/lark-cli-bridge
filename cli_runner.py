@@ -2,14 +2,11 @@
 CLI 子进程管理
 封装 opencode / claude 的 subprocess 调用，支持流式输出解析
 
-opencode serve 模式（推荐，支持会话持久化）:
-    opencode run --attach http://localhost:4096 [--continue|--session ID] "prompt"
+opencode:
+    opencode run [--session ID] "prompt"
 
-opencode 传统模式:
-    opencode run "prompt"
-
-claude 非交互模式:
-    claude -p "prompt" --output-format stream-json --verbose --include-partial-messages
+claude:
+    claude --print --output-format stream-json --verbose --include-partial-messages
 """
 
 import asyncio
@@ -21,7 +18,6 @@ from typing import Callable, Optional
 
 from bot_config import (
     CLI_TYPE, CLI_WORK_DIR, DEFAULT_MODEL, get_cli_command,
-    OPENCODE_SERVE_AUTO_START, get_opencode_serve_url, OPENCODE_SERVE_PASSWORD,
 )
 
 
@@ -81,7 +77,7 @@ async def run_cli(
 # ── opencode session 追踪 ───────────────────────────────────
 
 async def _list_opencode_sessions() -> set[str]:
-    """获取当前 opencode serve 上的所有 session ID 集合"""
+    """获取本地 opencode session 列表（读取本地 DB，无需 serve）"""
     cmd = get_cli_command() + ["session", "list"]
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -108,98 +104,52 @@ async def _run_opencode(
     """
     调用 opencode run。
 
-    serve 模式（OPENCODE_SERVE_AUTO_START=true 时启用）:
-        - 首次调用: opencode run --attach URL "message" → 扫描新 session_id
-        - 后续调用: opencode run --attach URL --session ID "message" → 复用会话
-
-    传统模式:
-        - opencode run "message" → 每次新建会话
+    新建会话: opencode run "message" → 扫描 session 列表提取新 ID
+    复用会话: opencode run --session ID "message" → 继续对话
     """
-    cmd = get_cli_command()
+    cmd = get_cli_command() + ["run"]
 
-    if OPENCODE_SERVE_AUTO_START:
-        # ── serve 模式 ────────────────────────────────────────
-        cmd += ["run", "--attach", get_opencode_serve_url()]
-        cmd += ["--username", "opencode"]
-        if OPENCODE_SERVE_PASSWORD:
-            cmd += ["--password", OPENCODE_SERVE_PASSWORD]
+    new_session_id: Optional[str] = None
 
-        new_session_id: Optional[str] = None
-
-        if session_id:
-            # 恢复已有会话
-            cmd += ["--session", session_id]
-        else:
-            # 新建会话：先拍快照，跑完后再扫描新 session_id
-            before = await _list_opencode_sessions()
-
-        cmd += [message]
-
-        env = os.environ.copy()
-
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=CLI_WORK_DIR,
-            env=env,
-        )
-
-        await _fire_callback(on_process_start, proc)
-
-        stdout_bytes, stderr_bytes = await proc.communicate()
-        full_text = stdout_bytes.decode("utf-8", errors="replace").strip()
-        stderr_text = stderr_bytes.decode("utf-8", errors="replace").strip()
-
-        if proc.returncode != 0:
-            # session 恢复失败，回退到新会话
-            if session_id and not full_text:
-                print(f"[opencode] session {session_id[:8]} 恢复失败，使用新会话", flush=True)
-                return await _run_opencode(message, None, on_text_chunk, on_process_start)
-            err_detail = stderr_text or "no stderr"
-            if full_text:
-                return full_text, session_id
-            raise RuntimeError(f"opencode 退出码 {proc.returncode}: {err_detail}")
-
-        # 扫描新增的 session_id
-        if not session_id and not new_session_id:
-            after = await _list_opencode_sessions()
-            new_ids = after - before
-            if new_ids:
-                new_session_id = new_ids.pop()
-                print(f"[opencode] 新 session: {new_session_id[:12]}...", flush=True)
-
-        return full_text, new_session_id or session_id
-
+    if session_id:
+        cmd += ["--session", session_id]
     else:
-        # ── 传统模式 ──────────────────────────────────────────
-        cmd += ["run", message]
+        before = await _list_opencode_sessions()
 
-        env = os.environ.copy()
+    cmd += [message]
 
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=CLI_WORK_DIR,
-            env=env,
-        )
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        cwd=CLI_WORK_DIR,
+    )
 
-        await _fire_callback(on_process_start, proc)
+    await _fire_callback(on_process_start, proc)
 
-        stdout_bytes, stderr_bytes = await proc.communicate()
-        full_text = stdout_bytes.decode("utf-8", errors="replace").strip()
-        stderr_text = stderr_bytes.decode("utf-8", errors="replace").strip()
+    stdout_bytes, stderr_bytes = await proc.communicate()
+    full_text = stdout_bytes.decode("utf-8", errors="replace").strip()
+    stderr_text = stderr_bytes.decode("utf-8", errors="replace").strip()
 
-        if proc.returncode != 0:
-            err_detail = stderr_text or "no stderr"
-            if full_text:
-                return full_text, None
-            raise RuntimeError(f"opencode 退出码 {proc.returncode}: {err_detail}")
+    if proc.returncode != 0:
+        if session_id and not full_text:
+            print(f"[opencode] session {session_id[:8]} 恢复失败，使用新会话", flush=True)
+            return await _run_opencode(message, None, on_text_chunk, on_process_start)
+        err_detail = stderr_text or "no stderr"
+        if full_text:
+            return full_text, session_id
+        raise RuntimeError(f"opencode 退出码 {proc.returncode}: {err_detail}")
 
-        return full_text, None
+    # 扫描新增的 session_id
+    if not session_id:
+        after = await _list_opencode_sessions()
+        new_ids = after - before
+        if new_ids:
+            new_session_id = new_ids.pop()
+            print(f"[opencode] 新 session: {new_session_id[:12]}...", flush=True)
+
+    return full_text, new_session_id or session_id
 
 
 async def _run_claude(
