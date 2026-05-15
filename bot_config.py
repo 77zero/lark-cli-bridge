@@ -10,15 +10,15 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ── 桥接前缀 ──────────────────────────────────────────────────
-# 设置 BRIDGE_NAME=opencode 则优先读取 OPENCODE_FEISHU_APP_ID 等
+# 设置 BRIDGE_NAME=opencode 则优先读取 BRIDGE_OPENCODE_FEISHU_APP_ID 等
 # 不设置则直接读取 FEISHU_APP_ID（向后兼容）
 _prefix = os.environ.get("BRIDGE_NAME", "").strip().upper()
 if _prefix:
-    _prefix += "_"
+    _prefix = f"BRIDGE_{_prefix}_"
 
 
-def _env(key: str, default: str = "") -> str:
-    """读取环境变量，优先 {BRIDGE_NAME}_KEY，回退 KEY"""
+def _bridge_env(key: str, default: str = "") -> str:
+    """桥接级变量：优先 BRIDGE_{NAME}_{KEY}，回退 KEY（向后兼容单桥接）"""
     if _prefix:
         val = os.environ.get(f"{_prefix}{key}")
         if val is not None:
@@ -29,20 +29,40 @@ def _env(key: str, default: str = "") -> str:
     return default
 
 
-# ── 飞书凭证（必填）─────────────────────────────────────────
-FEISHU_APP_ID = _env("FEISHU_APP_ID")
-FEISHU_APP_SECRET = _env("FEISHU_APP_SECRET")
+def _direct_env(key: str, default: str = "") -> str:
+    """工具级/全局变量：直接读取，不受 BRIDGE_NAME 影响"""
+    val = os.environ.get(key)
+    if val is not None:
+        return val
+    return default
 
-# ── CLI 工具配置（必填）─────────────────────────────────────
-CLI_TYPE = _env("CLI_TYPE", "opencode")  # opencode / claude
+
+# ── 桥接级变量（受 BRIDGE_NAME 影响）─────────────────────────
+
+# 飞书凭证（必填）
+FEISHU_APP_ID = _bridge_env("FEISHU_APP_ID")
+FEISHU_APP_SECRET = _bridge_env("FEISHU_APP_SECRET")
+
+# CLI 工具选择
+CLI_TYPE = _bridge_env("CLI_TYPE", "opencode")  # opencode / claude
 CLI_WORK_DIR = os.path.expanduser(
-    _env("CLI_WORK_DIR", os.path.expanduser("~"))
+    _bridge_env("CLI_WORK_DIR", os.path.expanduser("~"))
 )
 
-# ── 可选配置 ────────────────────────────────────────────────
+# 上线通知接收人
+OWNER_OPEN_ID = _bridge_env("OWNER_OPEN_ID", "")
+
+# 会话持久化目录
+SESSIONS_DIR = os.path.expanduser(
+    _bridge_env("SESSIONS_DIR", f"~/.cli_lark_bridge_{CLI_TYPE}")
+)
+
+
+# ── 工具自身配置（不受 BRIDGE_NAME 影响）─────────────────────
+
 # CLI 可执行文件路径
-_OPENCODE = _env("OPENCODE_PATH") or shutil.which("opencode") or "opencode"
-_CLAUDE = _env("CLAUDE_PATH") or shutil.which("claude") or "claude"
+_OPENCODE = _direct_env("OPENCODE_PATH") or shutil.which("opencode") or "opencode"
+_CLAUDE = _direct_env("CLAUDE_PATH") or shutil.which("claude") or "claude"
 
 
 def get_cli_command() -> list[str]:
@@ -52,23 +72,17 @@ def get_cli_command() -> list[str]:
     return [_OPENCODE]
 
 
-# ── opencode serve 模式配置 ─────────────────────────────────
-OPENCODE_SERVE_URL = _env("OPENCODE_SERVE_URL", "")
-OPENCODE_SERVE_PASSWORD = _env("OPENCODE_SERVE_PASSWORD", "")
-OPENCODE_SERVE_AUTO_START = _env("OPENCODE_SERVE_AUTO_START", "true").lower() == "true"
-OPENCODE_SERVE_PORT = int(_env("OPENCODE_SERVE_PORT", "4096"))
+# opencode serve 模式配置
+OPENCODE_SERVE_URL = _direct_env("OPENCODE_SERVE_URL", "")
+OPENCODE_SERVE_PASSWORD = _direct_env("OPENCODE_SERVE_PASSWORD", "")
+OPENCODE_SERVE_AUTO_START = _direct_env("OPENCODE_SERVE_AUTO_START", "true").lower() == "true"
+OPENCODE_SERVE_PORT = int(_direct_env("OPENCODE_SERVE_PORT", "4096"))
 
-# 飞书 SDK 日志级别
-LOG_LEVEL = _env("LOG_LEVEL", "INFO")
+# claude 默认模型
+DEFAULT_MODEL = _direct_env("DEFAULT_MODEL", "")
 
-# 默认模型（仅 claude 模式有效）
-DEFAULT_MODEL = _env("DEFAULT_MODEL", "")
 
-# 流式推送间隔
-STREAM_CHUNK_SIZE = int(_env("STREAM_CHUNK_SIZE", "20"))
+# ── 全局配置（不受 BRIDGE_NAME 影响）─────────────────────────
 
-# 上线通知接收人（留空不发送）
-OWNER_OPEN_ID = _env("OWNER_OPEN_ID", "")
-
-# 会话持久化目录（按 CLI 类型隔离）
-SESSIONS_DIR = os.path.expanduser(_env("SESSIONS_DIR", f"~/.cli_lark_bridge_{CLI_TYPE}"))
+LOG_LEVEL = _direct_env("LOG_LEVEL", "INFO")
+STREAM_CHUNK_SIZE = int(_direct_env("STREAM_CHUNK_SIZE", "20"))
