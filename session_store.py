@@ -85,6 +85,10 @@ class SessionStore:
         user["started_at"] = datetime.now().isoformat()
         await self._save_async()
 
+    async def invalidate_session(self, user_id: str) -> None:
+        """标记当前 session 已失效（静默清空，下次消息自动创建新会话）"""
+        await self.new_session(user_id)
+
     async def reset_session(self, user_id: str) -> None:
         """重置用户会话（下次消息将开启新会话）"""
         await self.new_session(user_id)

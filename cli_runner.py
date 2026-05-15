@@ -344,9 +344,24 @@ async def _run_claude(
     final_text, new_session_id, returncode, stderr_text = await _run_once(session_id)
 
     # session 恢复失败时自动回退到新 session
-    if session_id and returncode != 0 and not stderr_text and not final_text:
-        print("[claude] resume 失败，使用新 session 重试", flush=True)
-        final_text, new_session_id, returncode, stderr_text = await _run_once(None)
+    # 条件：有 session_id、退出码非零、无有效输出
+    # 触发：stderr 为空 OR stderr 包含 session 失效关键词
+    if session_id and returncode != 0 and not final_text:
+        _stderr_lower = stderr_text.lower()
+        _session_failure_keywords = [
+            "no conversation found",
+            "session not found",
+            "session id",
+            "not found",
+            "does not exist",
+        ]
+        _is_session_failure = (
+            not stderr_text
+            or any(kw in _stderr_lower for kw in _session_failure_keywords)
+        )
+        if _is_session_failure:
+            print(f"[claude] resume 失败（{stderr_text[:80] or '无 stderr 输出'}），使用新 session 重试", flush=True)
+            final_text, new_session_id, returncode, stderr_text = await _run_once(None)
 
     if returncode != 0:
         detail = stderr_text or "no stderr"

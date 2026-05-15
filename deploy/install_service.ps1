@@ -1,5 +1,5 @@
 # ============================================================
-# cli_lark_bridge NSSM Windows Service 一键部署脚本
+# lark-cli-bridge NSSM Windows Service 一键部署脚本
 # 以管理员身份运行此脚本
 # ============================================================
 
@@ -57,7 +57,7 @@ if (-not $nssm) {
 $MainScript = Join-Path $WorkDir "main.py"
 
 Write-Host "============================================" -ForegroundColor Cyan
-Write-Host "  cli_lark_bridge Windows 服务部署" -ForegroundColor Cyan
+Write-Host "  lark-cli-bridge Windows 服务部署" -ForegroundColor Cyan
 Write-Host "============================================" -ForegroundColor Cyan
 Write-Host "  服务名  : $ServiceName"
 Write-Host "  工作目录: $WorkDir"

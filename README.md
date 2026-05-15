@@ -1,10 +1,10 @@
-# cli_lark_bridge
+# lark-cli-bridge
 
 **飞书 × CLI 工具桥接** — 通过飞书即时消息远程操控本机 CLI（opencode / claude），流式卡片实时返回结果。
 
 ## 背景
 
-在远程开发场景中，经常需要通过手机或平板快速调用本机 CLI 工具（代码分析、文件操作、命令执行等）。cli_lark_bridge 将飞书变成 CLI 的远程终端：你发消息，本机执行，结果流式推送回飞书卡片。
+在远程开发场景中，经常需要通过手机或平板快速调用本机 CLI 工具（代码分析、文件操作、命令执行等）。lark-cli-bridge 将飞书变成 CLI 的远程终端：你发消息，本机执行，结果流式推送回飞书卡片。
 
 核心流程：
 
@@ -15,6 +15,7 @@
 ## 功能
 
 - **双 CLI 支持** — 兼容 [opencode](https://github.com/nicepkg/opencode) 和 [claude](https://github.com/anthropics/claude-code)，通过 `.env` 切换
+- **多桥接并发** — 同一份代码可同时运行 opencode + claude 两个桥接（各自独立飞书应用）
 - **流式卡片推送** — CLI 输出实时更新飞书卡片（400ms 间隔、4000 字截断、工具调用进度展示）
 - **会话持久化** — opencode serve 模式支持 `--attach --session` 跨消息保持对话上下文
 - **图片识别** — 支持接收飞书图片消息，下载后传给 CLI 分析
@@ -22,7 +23,7 @@
 - **自动打断** — 新消息到达自动停止当前运行，立即响应最新请求
 - **自适应看门狗** — 空闲时定时重启防假死，活跃对话中不打断
 - **PID 锁** — 防止 NSSM 快速重启导致多实例并发
-- **会话隔离** — 不同 CLI 类型使用独立会话目录（`~/.cli_lark_bridge_opencode` / `~/.cli_lark_bridge_claude`）
+- **会话隔离** — 不同 CLI 类型使用独立会话目录
 
 ## 环境要求
 
@@ -36,7 +37,7 @@
 
 ```bash
 git clone <repo-url>
-cd cli_lark_bridge_opencode
+cd lark-cli-bridge
 pip install -r requirements.txt
 ```
 
@@ -82,22 +83,58 @@ python main.py
 2. **权限管理** → 添加 `im:message:send_as_bot`、`im:message:read`、`im:message:reaction` 等权限
 3. **事件订阅** → 订阅 `im.message.receive_v1` 事件
 
+## 同时运行 opencode + claude
+
+一份代码可以同时跑两个桥接，各自连接独立的飞书应用：
+
+### 方式一：启动脚本
+
+```powershell
+.\start_bridges.ps1    # 后台启动两个进程
+.\stop_bridges.ps1     # 停止
+```
+
+### 方式二：手动启动
+
+```powershell
+$env:BRIDGE_NAME="opencode"; python main.py   # 终端 1
+$env:BRIDGE_NAME="claude"; python main.py     # 终端 2
+```
+
+### 配置说明
+
+`.env` 中不带前缀的配置作为默认值（即 opencode）。另一个桥接通过前缀覆盖：
+
+```ini
+# 默认（opencode）
+FEISHU_APP_ID=cli_xxx
+CLI_TYPE=opencode
+
+# claude 桥接（BRIDGE_NAME=claude 时优先读取）
+CLAUDE_FEISHU_APP_ID=cli_yyy
+CLAUDE_CLI_TYPE=claude
+CLAUDE_CLI_WORK_DIR=D:/project
+```
+
+规则：`BRIDGE_NAME=claude` → 优先读 `CLAUDE_FEISHU_APP_ID`，未设置则回退读 `FEISHU_APP_ID`。
+
 ## 项目结构
 
 ```
-cli_lark_bridge_opencode/
+lark-cli-bridge/
 ├── main.py              # 主入口：WebSocket 连接、消息路由、看门狗、PID 锁
 ├── cli_runner.py        # CLI 子进程管理，封装 opencode / claude 调用与流式解析
 ├── feishu_client.py     # 飞书 API 客户端：消息收发、卡片构建、图片下载
-├── bot_config.py        # 配置管理，从 .env 读取所有配置项
+├── bot_config.py        # 配置管理，从 .env 读取，支持 BRIDGE_NAME 前缀
 ├── session_store.py     # 会话持久化，用户级 session 映射
 ├── run_control.py       # 任务运行控制，管理活跃 CLI 进程的启停
-├── start_bridges.ps1    # 双服务启动脚本（后台运行 opencode + claude 两个实例）
+├── start_bridges.ps1    # 双服务启动脚本（设置 BRIDGE_NAME 启动两个进程）
 ├── stop_bridges.ps1     # 双服务停止脚本
 ├── deploy/
-│   ├── install_service.ps1   # NSSM 单服务一键安装脚本（交互式）
-│   └── install_services.ps1  # NSSM 双服务快速安装（opencode + claude）
+│   ├── install_service.ps1   # NSSM 单服务一键安装（交互式）
+│   └── install_services.ps1  # NSSM 双服务快速安装（自动设 BRIDGE_NAME）
 ├── .env.example         # 配置文件模板
+├── LICENSE              # MIT License
 └── requirements.txt     # Python 依赖
 ```
 
@@ -119,7 +156,7 @@ cli_lark_bridge_opencode/
 .\deploy\install_services.ps1
 ```
 
-安装后手动启动：
+脚本会自动通过 `AppEnvironmentExtra` 为每个服务设置 `BRIDGE_NAME`。安装后启动：
 
 ```powershell
 nssm start CLILarkBridge-OpenCode

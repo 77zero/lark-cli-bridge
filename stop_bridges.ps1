@@ -1,5 +1,5 @@
 # ============================================================
-# cli_lark_bridge 停止脚本
+# lark-cli-bridge 停止脚本
 # ============================================================
 
 $LogDir = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) "logs"

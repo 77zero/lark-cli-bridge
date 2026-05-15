@@ -1,7 +1,6 @@
 # ============================================================
-# cli_lark_bridge 双服务启动脚本
-# 后台运行 opencode + claude 两个桥接实例，输出留存到日志
-# 放在 cli_lark_bridge_opencode 目录下运行
+# lark-cli-bridge 双服务启动脚本
+# 后台运行 opencode + claude 两个桥接实例
 # ============================================================
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -31,43 +30,41 @@ if (Test-Path $PidFile) {
 $Python = (Get-Command python -ErrorAction Stop).Source
 Write-Host "[Python] $Python" -ForegroundColor Gray
 
-# ── 启动 opencode 实例（本目录）─────────────────────────────
-$OpenCodeDir = $ScriptDir
-$OpenCodeLog = Join-Path $OpenCodeDir "logs" "opencode.log"
-New-Item -ItemType Directory -Force -Path (Join-Path $OpenCodeDir "logs") | Out-Null
-
+# ── 启动 opencode 实例 ─────────────────────────────────────
+$OpenCodeLog = Join-Path $LogDir "opencode.log"
 Write-Host "[启动] opencode bridge..." -ForegroundColor Green
 
+$env:BRIDGE_NAME = "opencode"
 $openProc = Start-Process -FilePath $Python `
-    -ArgumentList "`"$OpenCodeDir\main.py`"" `
-    -WorkingDirectory $OpenCodeDir `
+    -ArgumentList "`"$ScriptDir\main.py`"" `
+    -WorkingDirectory $ScriptDir `
     -RedirectStandardOutput $OpenCodeLog `
     -RedirectStandardError $OpenCodeLog `
     -NoNewWindow `
     -PassThru
 
-$openProc.Id | Out-File (Join-Path $OpenCodeDir "logs" "opencode.pid")
+$openProc.Id | Out-File (Join-Path $LogDir "opencode.pid")
 $openProc.Id | Out-File $PidFile -Append
 Write-Host "  PID: $($openProc.Id)  日志: $OpenCodeLog" -ForegroundColor Gray
 
-# ── 启动 claude 实例（同级目录）─────────────────────────────
-$ClaudeDir = Join-Path (Split-Path $ScriptDir -Parent) "cli_lark_bridge_claudecode"
-$ClaudeLog = Join-Path $ClaudeDir "logs" "claudecode.log"
-New-Item -ItemType Directory -Force -Path (Join-Path $ClaudeDir "logs") | Out-Null
-
+# ── 启动 claude 实例（同目录，用 BRIDGE_NAME 区分）─────────
+$ClaudeLog = Join-Path $LogDir "claude.log"
 Write-Host "[启动] claude bridge..." -ForegroundColor Green
 
+$env:BRIDGE_NAME = "claude"
 $claudeProc = Start-Process -FilePath $Python `
-    -ArgumentList "`"$ClaudeDir\main.py`"" `
-    -WorkingDirectory $ClaudeDir `
+    -ArgumentList "`"$ScriptDir\main.py`"" `
+    -WorkingDirectory $ScriptDir `
     -RedirectStandardOutput $ClaudeLog `
     -RedirectStandardError $ClaudeLog `
     -NoNewWindow `
     -PassThru
 
-$claudeProc.Id | Out-File (Join-Path $ClaudeDir "logs" "claudecode.pid")
+$claudeProc.Id | Out-File (Join-Path $LogDir "claude.pid")
 $claudeProc.Id | Out-File $PidFile -Append
 Write-Host "  PID: $($claudeProc.Id)  日志: $ClaudeLog" -ForegroundColor Gray
+
+Remove-Item Env:\BRIDGE_NAME -ErrorAction SilentlyContinue
 
 # ── 完成 ────────────────────────────────────────────────────
 Write-Host ""
