@@ -61,7 +61,7 @@ CLI_TYPE=opencode
 CLI_WORK_DIR=D:/project
 
 # opencode serve 模式（推荐，支持会话持久化）
-OPENCODE_SERVE_URL=http://localhost:4096
+OPENCODE_SERVE_PORT=4096
 OPENCODE_SERVE_PASSWORD=your-password
 
 # 上线通知接收人（飞书 open_id，可选）

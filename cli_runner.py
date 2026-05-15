@@ -21,7 +21,7 @@ from typing import Callable, Optional
 
 from bot_config import (
     CLI_TYPE, CLI_WORK_DIR, DEFAULT_MODEL, get_cli_command,
-    OPENCODE_SERVE_URL, OPENCODE_SERVE_PASSWORD,
+    OPENCODE_SERVE_AUTO_START, get_opencode_serve_url, OPENCODE_SERVE_PASSWORD,
 )
 
 
@@ -108,7 +108,7 @@ async def _run_opencode(
     """
     调用 opencode run。
 
-    serve 模式（OPENCODE_SERVE_URL 已配置）:
+    serve 模式（OPENCODE_SERVE_AUTO_START=true 时启用）:
         - 首次调用: opencode run --attach URL "message" → 扫描新 session_id
         - 后续调用: opencode run --attach URL --session ID "message" → 复用会话
 
@@ -117,9 +117,9 @@ async def _run_opencode(
     """
     cmd = get_cli_command()
 
-    if OPENCODE_SERVE_URL:
+    if OPENCODE_SERVE_AUTO_START:
         # ── serve 模式 ────────────────────────────────────────
-        cmd += ["run", "--attach", OPENCODE_SERVE_URL]
+        cmd += ["run", "--attach", get_opencode_serve_url()]
         cmd += ["--username", "opencode"]
         if OPENCODE_SERVE_PASSWORD:
             cmd += ["--password", OPENCODE_SERVE_PASSWORD]

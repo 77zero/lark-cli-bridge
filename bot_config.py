@@ -73,10 +73,14 @@ def get_cli_command() -> list[str]:
 
 
 # opencode serve 模式配置
-OPENCODE_SERVE_URL = _direct_env("OPENCODE_SERVE_URL", "")
 OPENCODE_SERVE_PASSWORD = _direct_env("OPENCODE_SERVE_PASSWORD", "")
 OPENCODE_SERVE_AUTO_START = _direct_env("OPENCODE_SERVE_AUTO_START", "true").lower() == "true"
 OPENCODE_SERVE_PORT = int(_direct_env("OPENCODE_SERVE_PORT", "4096"))
+
+
+def get_opencode_serve_url() -> str:
+    """返回 opencode serve 地址（由端口拼出）"""
+    return f"http://localhost:{OPENCODE_SERVE_PORT}"
 
 # claude 默认模型
 DEFAULT_MODEL = _direct_env("DEFAULT_MODEL", "")
