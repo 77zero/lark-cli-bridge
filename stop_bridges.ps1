@@ -19,7 +19,13 @@ foreach ($procId in $procIds) {
         if ($proc) {
             Write-Host "[停止] PID $procId ($($proc.ProcessName))" -ForegroundColor Yellow
             Stop-Process -Id $procId -Force
-            $stopped++
+            Start-Sleep -Seconds 2
+            $check = Get-Process -Id $procId -ErrorAction SilentlyContinue
+            if ($check) {
+                Write-Host "[失败] PID $procId 无法停止" -ForegroundColor Red
+            } else {
+                $stopped++
+            }
         } else {
             Write-Host "[过期] PID $procId 已不存在" -ForegroundColor Gray
         }

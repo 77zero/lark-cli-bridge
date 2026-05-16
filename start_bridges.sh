@@ -27,10 +27,15 @@ if [ -f "$PID_FILE" ]; then
         if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then
             echo -e "${YELLOW}  停止进程 $old_pid${NC}"
             kill "$old_pid" 2>/dev/null || true
+            sleep 2
+            if kill -0 "$old_pid" 2>/dev/null; then
+                echo -e "${YELLOW}  未响应，强制终止...${NC}"
+                kill -9 "$old_pid" 2>/dev/null || true
+                sleep 1
+            fi
         fi
     done < "$PID_FILE"
     rm -f "$PID_FILE"
-    sleep 2
 fi
 
 # ── 获取 Python 路径 ──────────────────────────────────────
@@ -47,7 +52,12 @@ BRIDGE_NAME=opencode nohup "$PYTHON" "$SCRIPT_DIR/main.py" \
 OPEN_PID=$!
 echo "$OPEN_PID" > "$LOG_DIR/opencode.pid"
 echo "$OPEN_PID" >> "$PID_FILE"
-echo -e "${GRAY}  PID: $OPEN_PID  日志: $OPENCODE_LOG${NC}"
+sleep 1
+if kill -0 "$OPEN_PID" 2>/dev/null; then
+    echo -e "${GRAY}  PID: $OPEN_PID  日志: $OPENCODE_LOG${NC}"
+else
+    echo -e "${RED}[失败] opencode 启动后立即退出，查看日志: $OPENCODE_LOG${NC}"
+fi
 
 # ── 启动 claude 实例 ─────────────────────────────────────
 CLAUDE_LOG="$LOG_DIR/claude.log"
@@ -59,7 +69,12 @@ BRIDGE_NAME=claude nohup "$PYTHON" "$SCRIPT_DIR/main.py" \
 CLAUDE_PID=$!
 echo "$CLAUDE_PID" > "$LOG_DIR/claude.pid"
 echo "$CLAUDE_PID" >> "$PID_FILE"
-echo -e "${GRAY}  PID: $CLAUDE_PID  日志: $CLAUDE_LOG${NC}"
+sleep 1
+if kill -0 "$CLAUDE_PID" 2>/dev/null; then
+    echo -e "${GRAY}  PID: $CLAUDE_PID  日志: $CLAUDE_LOG${NC}"
+else
+    echo -e "${RED}[失败] claude 启动后立即退出，查看日志: $CLAUDE_LOG${NC}"
+fi
 
 # ── 完成 ──────────────────────────────────────────────────
 echo ""

@@ -19,11 +19,15 @@ if (Test-Path $PidFile) {
             if ($proc) {
                 Write-Host "  停止进程 $procId ($($proc.ProcessName))" -ForegroundColor Yellow
                 Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
+                Start-Sleep -Seconds 2
+                $check = Get-Process -Id $procId -ErrorAction SilentlyContinue
+                if ($check) {
+                    Write-Host "  警告: 进程 $procId 仍在运行" -ForegroundColor Red
+                }
             }
         } catch {}
     }
     Remove-Item $PidFile -Force
-    Start-Sleep -Seconds 2
 }
 
 # ── 获取 Python 路径 ────────────────────────────────────────
@@ -35,32 +39,48 @@ $OpenCodeLog = Join-Path $LogDir "opencode.log"
 Write-Host "[启动] opencode bridge..." -ForegroundColor Green
 
 $env:BRIDGE_NAME = "opencode"
+$OpenCodeErrLog = Join-Path $LogDir "opencode_err.log"
 $openProc = Start-Process -FilePath $Python `
     -ArgumentList "`"$ScriptDir\main.py`"" `
     -WorkingDirectory $ScriptDir `
     -RedirectStandardOutput $OpenCodeLog `
+    -RedirectStandardError $OpenCodeErrLog `
     -NoNewWindow `
     -PassThru
 
 $openProc.Id | Out-File (Join-Path $LogDir "opencode.pid")
 $openProc.Id | Out-File $PidFile -Append
-Write-Host "  PID: $($openProc.Id)  日志: $OpenCodeLog" -ForegroundColor Gray
+Start-Sleep -Seconds 1
+$check = Get-Process -Id $openProc.Id -ErrorAction SilentlyContinue
+if ($check) {
+    Write-Host "  PID: $($openProc.Id)  日志: $OpenCodeLog" -ForegroundColor Gray
+} else {
+    Write-Host "[失败] opencode 启动后立即退出" -ForegroundColor Red
+}
 
 # ── 启动 claude 实例（同目录，用 BRIDGE_NAME 区分）─────────
 $ClaudeLog = Join-Path $LogDir "claude.log"
 Write-Host "[启动] claude bridge..." -ForegroundColor Green
 
 $env:BRIDGE_NAME = "claude"
+$ClaudeErrLog = Join-Path $LogDir "claude_err.log"
 $claudeProc = Start-Process -FilePath $Python `
     -ArgumentList "`"$ScriptDir\main.py`"" `
     -WorkingDirectory $ScriptDir `
     -RedirectStandardOutput $ClaudeLog `
+    -RedirectStandardError $ClaudeErrLog `
     -NoNewWindow `
     -PassThru
 
 $claudeProc.Id | Out-File (Join-Path $LogDir "claude.pid")
 $claudeProc.Id | Out-File $PidFile -Append
-Write-Host "  PID: $($claudeProc.Id)  日志: $ClaudeLog" -ForegroundColor Gray
+Start-Sleep -Seconds 1
+$check = Get-Process -Id $claudeProc.Id -ErrorAction SilentlyContinue
+if ($check) {
+    Write-Host "  PID: $($claudeProc.Id)  日志: $ClaudeLog" -ForegroundColor Gray
+} else {
+    Write-Host "[失败] claude 启动后立即退出" -ForegroundColor Red
+}
 
 Remove-Item Env:\BRIDGE_NAME -ErrorAction SilentlyContinue
 
